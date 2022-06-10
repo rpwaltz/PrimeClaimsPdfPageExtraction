@@ -17,9 +17,9 @@ namespace PrimeClaimsPdfPageExtraction
         public string InputDirectory { get => inputDirectory; set => inputDirectory = value; }
         public string OutputDirectory { get => outputDirectory; set => outputDirectory = value; }
 
-        public PrimeClaimsJpgPdfWriter(string inputDirectory, string outputDirectory)
+        public PrimeClaimsJpgPdfWriter(string outputDirectory)
         {
-            InputDirectory = inputDirectory;
+            InputDirectory = outputDirectory;
 
             OutputDirectory = outputDirectory;
 
@@ -62,7 +62,7 @@ namespace PrimeClaimsPdfPageExtraction
 
                 }
                 document.Close();
-               // Console.WriteLine("found images " + jpegImages.Count);
+
             }
         }
 
