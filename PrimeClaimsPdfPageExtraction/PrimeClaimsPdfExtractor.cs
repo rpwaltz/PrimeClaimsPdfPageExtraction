@@ -14,50 +14,41 @@ namespace PrimeClaimsPdfPageExtraction
 {
     public class PrimeClaimsPdfExtractor
     {
-        private string inputDirectory;
+
         private string tmpDirectory;
         private string outputDirectory;
         private string primePdfFilename;
 
-        public string InputDirectory { get => inputDirectory; set => inputDirectory = value; }
-        public string PrimePdfFilename { get => primePdfFilename; set => primePdfFilename = value; }
-        public string TmpDirectory { get => tmpDirectory; set => tmpDirectory = value; }
-        public string OutputDirectory { get => outputDirectory; set => outputDirectory = value; }
+        string PrimePdfFilename { get => primePdfFilename; set => primePdfFilename = value; }
+        string TmpDirectory { get => tmpDirectory; set => tmpDirectory = value; }
+        string OutputDirectory { get => outputDirectory; set => outputDirectory = value; }
 
-        public PrimeClaimsPdfExtractor(string inputDirectory, string primePdfFilename, string outputDirectory = null, string tmpDirectory = null)
+        public PrimeClaimsPdfExtractor(string primePdfFilename, string outputDirectory, string tmpDirectory)
         {
-            InputDirectory = inputDirectory;
+            OutputDirectory = outputDirectory;
             PrimePdfFilename = primePdfFilename;
+
             if (String.IsNullOrEmpty(tmpDirectory))
             {
-                TmpDirectory = inputDirectory + System.IO.Path.DirectorySeparatorChar + "tmp";
+                TmpDirectory = outputDirectory + System.IO.Path.DirectorySeparatorChar + "tmp";
             }
             else
             {
                 TmpDirectory = tmpDirectory;
             }
-            if (String.IsNullOrEmpty(tmpDirectory))
-            {
-                OutputDirectory = inputDirectory + System.IO.Path.DirectorySeparatorChar + "output";
-            }
-            else
-            {
-                OutputDirectory = outputDirectory;
-            }
-            if (InputDirectory.Equals(OutputDirectory) || InputDirectory.Equals(TmpDirectory) || TmpDirectory.Equals(OutputDirectory))
-            {
-                throw new Exception("Input, Output and Tmp directories must be different");
-            }
-            if (!(Directory.Exists(inputDirectory) && Directory.Exists(TmpDirectory) && Directory.Exists(OutputDirectory)))
-            {
-                throw new Exception("A directory needs to be created");
-            }
 
-        }
+            if (TmpDirectory.Equals(OutputDirectory))
+            {
+                throw new Exception("Output and Tmp directories must be different");
+            }
+            if (!Directory.Exists(TmpDirectory))
+                {
+                Directory.CreateDirectory(TmpDirectory);
+                }
+            }
         public void SplitIntoSinglePages()
         {
-            string sourcePDFFilename = InputDirectory + System.IO.Path.DirectorySeparatorChar + PrimePdfFilename;
-            FileInfo fileInfo = new FileInfo(sourcePDFFilename);
+            FileInfo fileInfo = new FileInfo(PrimePdfFilename);
             FileStream fileStream = fileInfo.Open(FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
             PdfDocument pdfDocument = new PdfDocument(new PdfReader(fileStream));
 
@@ -65,21 +56,19 @@ namespace PrimeClaimsPdfPageExtraction
             SplitPdfDocument(pdfDocument);
             pdfDocument.Close();
             DirectoryInfo pdfTmpDirctoryFileInfo = new DirectoryInfo(tmpDirectory);
-            FileInfo[] fileInfoArray = pdfTmpDirctoryFileInfo.GetFiles("*.pdf");
+            FileInfo[] fileInfoArray = pdfTmpDirctoryFileInfo.GetFiles("*PG_?????.pdf");
 
             for (int i = 0; i < fileInfoArray.Length; i++)
             {
-                BuildCSVData(fileInfoArray[i]);
+                BuildCSVDataAsync(fileInfoArray[i]);
             }
         }
         private void SplitPdfDocument(PdfDocument pdfDocument)
         {
-            System.Console.WriteLine("FOUND Number of Pages: " + pdfDocument.GetNumberOfPages());
             for (int i = 1; i <= pdfDocument.GetNumberOfPages(); ++i)
             {
                 WriterProperties writerProperties = new WriterProperties();
-                FileInfo fileInfo = new FileInfo(String.Format(@"{0}{1}Pg_{2}.pdf", TmpDirectory, System.IO.Path.DirectorySeparatorChar, i));
-                System.Console.WriteLine("CREATE : " + fileInfo.FullName);
+                FileInfo fileInfo = new FileInfo(String.Format(@"{0}{1}PG_{2}.pdf", TmpDirectory, System.IO.Path.DirectorySeparatorChar, i));
                 FileStream fileStream = fileInfo.Open(FileMode.Create, FileAccess.Write, FileShare.ReadWrite);
 
                 PdfWriter pdfWriter = new PdfWriter(fileStream);
@@ -93,14 +82,14 @@ namespace PrimeClaimsPdfPageExtraction
 
         }
 
-        private void BuildCSVData(FileInfo fileInfo)
+        private async Task BuildCSVDataAsync(FileInfo fileInfo)
         {
             FileStream fileStream = fileInfo.Open(FileMode.Open, FileAccess.Read, FileShare.Delete);
             PdfDocument pdfDocument = new PdfDocument(new PdfReader(fileStream));
 
             var strategy = new SimpleTextExtractionStrategy();
 
-            // System.Console.WriteLine("\n\n\n\n Find : " + pdfDocument.GetDocumentInfo().GetTitle() + " pages " + pdfDocument.GetNumberOfPages());
+
             string billId = "";
             string claimAmount = "";
             string claimNumber = "";
@@ -110,15 +99,15 @@ namespace PrimeClaimsPdfPageExtraction
                 PdfPage page = pdfDocument.GetPage(i);
 
                 string text = PdfTextExtractor.GetTextFromPage(page, strategy);
-                // System.Console.WriteLine(text);
-                Regex regex = new Regex(@"Bill\s+ID\s+(?<billid>\S+)", RegexOptions.ExplicitCapture);
+                
+                Regex regex = new Regex(@"Bill\s+ID\s+(?<billid>.*)(\n|\r|\r\n)", RegexOptions.ExplicitCapture);
                 MatchCollection matches = regex.Matches(text);
                 foreach (Match match in matches)
                 {
                     if (match.Success)
                     {
                         GroupCollection groups = match.Groups;
-                        System.Console.WriteLine("FOUND BILL ID: " + groups["billid"]);
+
                         billId = groups["billid"].ToString();
                     }
                 }
@@ -131,7 +120,7 @@ namespace PrimeClaimsPdfPageExtraction
                     if (match.Success)
                     {
                         GroupCollection groups = match.Groups;
-                        System.Console.WriteLine("FOUND CLAIM AMOUNT: " + groups["claimamount"]);
+
                         claimAmount = groups["claimamount"].ToString();
 
                     }
@@ -144,21 +133,26 @@ namespace PrimeClaimsPdfPageExtraction
                     if (match.Success)
                     {
                         GroupCollection groups = match.Groups;
-                        System.Console.WriteLine("FOUND CLAIM NUMBER: " + groups["claimNumber"]);
+
                         claimNumber = groups["claimNumber"].ToString();
                     }
                 }
-                
-                string destTextFilename = TmpDirectory + System.IO.Path.DirectorySeparatorChar + billId + ".pdf";
-                FileInfo fileInfoTextOnlyPdf = new FileInfo(destTextFilename);
-                FileStream fileStreamImageOnlyPdf = fileInfoTextOnlyPdf.Open(FileMode.OpenOrCreate, FileAccess.Write, FileShare.ReadWrite);
 
-                PdfDocument textOnlyPdf = new PdfDocument(new PdfWriter(fileStreamImageOnlyPdf));
+//               string destTextFilename = OutputDirectory + System.IO.Path.DirectorySeparatorChar + billId + ".txt";
+//                File.WriteAllText(destTextFilename, text);
+
+                string destTextPDFFilename = OutputDirectory + System.IO.Path.DirectorySeparatorChar + billId + ".pdf";
+                FileInfo fileInfoTextOnlyPdf = new FileInfo(destTextPDFFilename);
+                FileStream fileStreamTextOnly = fileInfoTextOnlyPdf.Open(FileMode.OpenOrCreate, FileAccess.Write, FileShare.ReadWrite);
+
+                PdfDocument textOnlyPdf = new PdfDocument(new PdfWriter(fileStreamTextOnly));
 
                 textOnlyPdf.AddPage(page.CopyTo(textOnlyPdf));
                 Document pdfTextDocument = new Document(textOnlyPdf);
 
                 pdfTextDocument.Close();
+                System.Console.WriteLine("Created File for PDF Page named " + destTextPDFFilename);
+                    
             }
             fileStream.Close();
             
